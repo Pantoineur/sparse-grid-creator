@@ -9,6 +9,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var boldStyle = lipgloss.NewStyle().
+	Bold(true)
+var cursorStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("#00FF00"))
+
 func main() {
 	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
@@ -26,14 +32,30 @@ type Grid struct {
 	Cells []Cell
 }
 
+const (
+	PaintPath = iota
+	PaintObstacle
+	Eraser
+)
+
+var typeName = map[int]string{
+	PaintPath:     "Path",
+	PaintObstacle: "Obstacle",
+	Eraser:        "Eraser",
+}
+
 type model struct {
-	grid      Grid
-	filled    map[Cell]bool
-	cursor    Cell
-	paintMode bool
-	ready     bool
-	viewport  viewport.Model
-	content   string
+	grid              Grid
+	filled            map[Cell]int
+	cursor            Cell
+	additionalCursors map[Cell]bool
+	isPainting        bool
+	paintType         int
+	ready             bool
+	viewport          viewport.Model
+	content           string
+	showCells         bool
+	mouseEvent        tea.MouseEvent
 }
 
 func initialModel() model {
@@ -42,7 +64,8 @@ func initialModel() model {
 			Size:  30,
 			Cells: generateCells(30),
 		},
-		filled: make(map[Cell]bool),
+		filled:            make(map[Cell]int),
+		additionalCursors: make(map[Cell]bool),
 	}
 }
 
@@ -118,7 +141,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "p":
-			m.paintMode = !m.paintMode
+			m.isPainting = !m.isPainting
+
+		case "m":
+			m.paintType++
+			if m.paintType > 2 {
+				m.paintType = 0
+			}
+
+			// TODO
+		//case "alt+right":
+		//	m.additionalCursors[Cell{X: m.cursor.X + 1, Y: m.cursor.Y}] = true
+		//
+		//case "alt+left":
+		//	m.additionalCursors[Cell{X: m.cursor.X - 1, Y: m.cursor.Y}] = true
+		//
+		//case "alt+up":
+		//	m.additionalCursors[Cell{X: m.cursor.X, Y: m.cursor.Y - 1}] = true
+		//
+		//case "alt+down":
+		//	m.additionalCursors[Cell{X: m.cursor.X, Y: m.cursor.Y + 1}] = true
 
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
@@ -127,9 +169,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ok {
 				delete(m.filled, m.cursor)
 			} else {
-				m.filled[m.cursor] = true
+				m.filled[m.cursor] = m.paintType
 			}
 		}
+
 	case tea.WindowSizeMsg:
 		headerHeight := lipgloss.Height(m.headerView())
 		footerHeight := lipgloss.Height(m.footerView())
@@ -151,10 +194,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - verticalMarginHeight
 		}
+
+		// TODO
+		//case tea.MouseMsg:
+		//	return m, tea.Printf("(X: %d, Y: %d) %s", msg.X, msg.Y, tea.MouseEvent(msg))
 	}
 
-	// Return the updated model to the Bubble Tea runtime for processing.
-	// Note that we're not returning a command.
 	m.viewport, _ = m.viewport.Update(msg)
 
 	cmds = append(cmds, cmd)
@@ -173,19 +218,27 @@ func (m model) View() string {
 	// Iterate over our grid
 	for _, cell := range m.grid.Cells {
 
-		// Is this choice selected?
-		checked := " " // not selected
-		if _, ok := m.filled[cell]; ok {
-			checked = "X" // selected!
+		checked := " "
+		if cellType, ok := m.filled[cell]; ok {
+			var c string
+			switch cellType {
+			case PaintPath:
+				c = "X"
+			case PaintObstacle:
+				c = "O"
+			case Eraser:
+				delete(m.filled, cell)
+			}
+
+			checked = boldStyle.Render(c)
 		}
 
-		// Is the cursor pointing at this choice?
-		cursor := "" // no cursor
+		cursor := ""
 		if m.cursor == cell {
-			cursor = "X" // cursor!
+			cursor = cursorStyle.Render("O")
 
-			if m.paintMode {
-				m.filled[cell] = true
+			if m.isPainting {
+				m.filled[cell] = m.paintType
 			}
 			checked = ""
 		}
@@ -214,11 +267,11 @@ func (m model) footerView() string {
 	// The footer
 
 	pm := ""
-	if m.paintMode {
+	if m.isPainting {
 		pm = "X"
 	}
 	s := ""
-	s += fmt.Sprintf("\nPainting [%s]\n", pm)
+	s += fmt.Sprintf("\nPainting [%s] Type [%s]\n", boldStyle.Render(pm), boldStyle.Render(typeName[m.paintType]))
 	s += "\nPress q to quit.\n"
 
 	return s
