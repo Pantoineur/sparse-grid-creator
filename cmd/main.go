@@ -38,6 +38,12 @@ const (
 	Eraser
 )
 
+var cellTypeChar = map[int]string{
+	PaintPath:     "X",
+	PaintObstacle: "O",
+	Eraser:        "E",
+}
+
 var typeName = map[int]string{
 	PaintPath:     "Path",
 	PaintObstacle: "Obstacle",
@@ -55,7 +61,6 @@ type model struct {
 	viewport          viewport.Model
 	content           string
 	showCells         bool
-	mouseEvent        tea.MouseEvent
 }
 
 func initialModel() model {
@@ -150,27 +155,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// TODO
-		//case "alt+right":
-		//	m.additionalCursors[Cell{X: m.cursor.X + 1, Y: m.cursor.Y}] = true
-		//
-		//case "alt+left":
-		//	m.additionalCursors[Cell{X: m.cursor.X - 1, Y: m.cursor.Y}] = true
-		//
-		//case "alt+up":
-		//	m.additionalCursors[Cell{X: m.cursor.X, Y: m.cursor.Y - 1}] = true
-		//
-		//case "alt+down":
-		//	m.additionalCursors[Cell{X: m.cursor.X, Y: m.cursor.Y + 1}] = true
+		case "alt+right", "alt+l":
+			m.additionalCursors = setClosestHorizontal(m, false)
 
-		// The "enter" key and the spacebar (a literal space) toggle
-		// the selected state for the item that the cursor is pointing at.
-		case "enter", " ":
+		case "alt+left", "alt+h":
+			m.additionalCursors = setClosestHorizontal(m, true)
+
+		case "alt+up", "alt+k":
+			m.additionalCursors = setClosestVertical(m, true)
+
+		case "alt+down", "alt+j":
+			m.additionalCursors = setClosestVertical(m, false)
+
+			//	 The "enter" key and the spacebar (a literal space) toggle
+			//	 the selected state for the item that the cursor is pointing at.
+		case "enter", " ": //
 			_, ok := m.filled[m.cursor]
 			if ok {
 				delete(m.filled, m.cursor)
 			} else {
 				m.filled[m.cursor] = m.paintType
 			}
+		case "esc":
+			m.additionalCursors = make(map[Cell]bool)
 		}
 
 	case tea.WindowSizeMsg:
@@ -194,10 +201,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - verticalMarginHeight
 		}
-
-		// TODO
-		//case tea.MouseMsg:
-		//	return m, tea.Printf("(X: %d, Y: %d) %s", msg.X, msg.Y, tea.MouseEvent(msg))
 	}
 
 	m.viewport, _ = m.viewport.Update(msg)
@@ -205,6 +208,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+func setClosestHorizontal(m model, negative bool) map[Cell]bool {
+	count := 0
+
+	for {
+		if negative {
+			count--
+		} else {
+			count++
+		}
+
+		newCell := Cell{X: m.cursor.X + count, Y: m.cursor.Y}
+		if (newCell.X > m.grid.Size-1 && !negative) || (newCell.X < 0 && negative) {
+			return m.additionalCursors
+		}
+
+		if _, ok := m.additionalCursors[newCell]; !ok {
+			m.additionalCursors[newCell] = true
+			return m.additionalCursors
+		}
+	}
+}
+
+func setClosestVertical(m model, negative bool) map[Cell]bool {
+	count := 0
+
+	for {
+		if negative {
+			count--
+		} else {
+			count++
+		}
+
+		newCell := Cell{X: m.cursor.X, Y: m.cursor.Y + count}
+		if (newCell.Y > m.grid.Size-1 && !negative) || (newCell.Y < 0 && negative) {
+			return m.additionalCursors
+		}
+
+		if _, ok := m.additionalCursors[newCell]; !ok {
+			m.additionalCursors[newCell] = true
+			return m.additionalCursors
+		}
+	}
 }
 
 func (m model) View() string {
@@ -223,23 +270,29 @@ func (m model) View() string {
 			var c string
 			switch cellType {
 			case PaintPath:
-				c = "X"
+				c = boldStyle.Foreground(lipgloss.Color("#deb997")).Render(cellTypeChar[cellType])
 			case PaintObstacle:
-				c = "O"
+				c = boldStyle.Foreground(lipgloss.Color("#b53e3e")).Render(cellTypeChar[cellType])
 			case Eraser:
 				delete(m.filled, cell)
+				c = " "
 			}
 
-			checked = boldStyle.Render(c)
+			checked = c
 		}
 
 		cursor := ""
 		if m.cursor == cell {
-			cursor = cursorStyle.Render("O")
+			cursor = cursorStyle.Render(cellTypeChar[m.paintType])
 
 			if m.isPainting {
 				m.filled[cell] = m.paintType
 			}
+			checked = ""
+		}
+
+		if _, ok := m.additionalCursors[cell]; ok {
+			cursor = cursorStyle.Render(cellTypeChar[m.paintType])
 			checked = ""
 		}
 
