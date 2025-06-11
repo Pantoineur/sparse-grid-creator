@@ -16,7 +16,8 @@ var cursorStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("#00FF00"))
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(initialModel(),
+		tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
@@ -61,32 +62,28 @@ type model struct {
 	viewport          viewport.Model
 	content           string
 	showCells         bool
+	state             int
+}
+
+const (
+	Resizing = iota
+	Painting
+	ConfiguringExport
+	Exporting
+)
+
+type WindowState interface {
+	Init() tea.Cmd
+	Update(msg tea.Msg) (tea.Model, tea.Cmd)
+	View() tea.Model
 }
 
 func initialModel() model {
 	return model{
-		grid: Grid{
-			Size:  30,
-			Cells: generateCells(30),
-		},
 		filled:            make(map[Cell]int),
 		additionalCursors: make(map[Cell]bool),
+		state:             Resizing,
 	}
-}
-
-func generateCells(size int) []Cell {
-	cells := make([]Cell, size*size)
-
-	for y := range size {
-		for x := range size {
-			cells[y*size+x] = Cell{
-				X: x,
-				Y: y,
-			}
-		}
-	}
-
-	return cells
 }
 
 func (m model) Init() tea.Cmd {
@@ -156,16 +153,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// TODO
 		case "alt+right", "alt+l":
-			m.additionalCursors = setClosestHorizontal(m, false)
+			m.additionalCursors = SetClosestHorizontal(m, false)
 
 		case "alt+left", "alt+h":
-			m.additionalCursors = setClosestHorizontal(m, true)
+			m.additionalCursors = SetClosestHorizontal(m, true)
 
 		case "alt+up", "alt+k":
-			m.additionalCursors = setClosestVertical(m, true)
+			m.additionalCursors = SetClosestVertical(m, true)
 
 		case "alt+down", "alt+j":
-			m.additionalCursors = setClosestVertical(m, false)
+			m.additionalCursors = SetClosestVertical(m, false)
 
 			//	 The "enter" key and the spacebar (a literal space) toggle
 			//	 the selected state for the item that the cursor is pointing at.
@@ -208,50 +205,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
-}
-
-func setClosestHorizontal(m model, negative bool) map[Cell]bool {
-	count := 0
-
-	for {
-		if negative {
-			count--
-		} else {
-			count++
-		}
-
-		newCell := Cell{X: m.cursor.X + count, Y: m.cursor.Y}
-		if (newCell.X > m.grid.Size-1 && !negative) || (newCell.X < 0 && negative) {
-			return m.additionalCursors
-		}
-
-		if _, ok := m.additionalCursors[newCell]; !ok {
-			m.additionalCursors[newCell] = true
-			return m.additionalCursors
-		}
-	}
-}
-
-func setClosestVertical(m model, negative bool) map[Cell]bool {
-	count := 0
-
-	for {
-		if negative {
-			count--
-		} else {
-			count++
-		}
-
-		newCell := Cell{X: m.cursor.X, Y: m.cursor.Y + count}
-		if (newCell.Y > m.grid.Size-1 && !negative) || (newCell.Y < 0 && negative) {
-			return m.additionalCursors
-		}
-
-		if _, ok := m.additionalCursors[newCell]; !ok {
-			m.additionalCursors[newCell] = true
-			return m.additionalCursors
-		}
-	}
 }
 
 func (m model) View() string {
