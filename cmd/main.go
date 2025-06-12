@@ -62,7 +62,7 @@ type model struct {
 	viewport          viewport.Model
 	content           string
 	showCells         bool
-	state             int
+	state             WindowState
 }
 
 const (
@@ -79,11 +79,16 @@ type WindowState interface {
 }
 
 func initialModel() model {
-	return model{
+	m := model{
 		filled:            make(map[Cell]int),
 		additionalCursors: make(map[Cell]bool),
-		state:             Resizing,
 	}
+
+	m.state = &ResizingModel{
+		m: m,
+	}
+
+	return m
 }
 
 func (m model) Init() tea.Cmd {
