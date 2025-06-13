@@ -11,7 +11,7 @@ import (
 
 var boldStyle = lipgloss.NewStyle().
 	Bold(true)
-var cursorStyle = lipgloss.NewStyle().
+var cursorPrintStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(lipgloss.Color("#00FF00"))
 
@@ -62,30 +62,24 @@ type model struct {
 	viewport          viewport.Model
 	content           string
 	showCells         bool
-	state             WindowState
+	currentState      int
+	resizingModel     ResizingModel
+	//paintingModel	PaintingModel
+	//exportModel	ExportModel
 }
 
 const (
 	Resizing = iota
 	Painting
-	ConfiguringExport
 	Exporting
 )
 
-type WindowState interface {
-	Init() tea.Cmd
-	Update(msg tea.Msg) (tea.Model, tea.Cmd)
-	View() tea.Model
-}
-
 func initialModel() model {
 	m := model{
+		currentState:      Resizing,
 		filled:            make(map[Cell]int),
 		additionalCursors: make(map[Cell]bool),
-	}
-
-	m.state = &ResizingModel{
-		m: m,
+		resizingModel:     NewResizeModel(),
 	}
 
 	return m
@@ -93,12 +87,22 @@ func initialModel() model {
 
 func (m model) Init() tea.Cmd {
 	// Just return `nil`, which means "no I/O right now, please."
-
 	return nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var (
+	var cmd tea.Cmd
+	switch m.currentState {
+	case Resizing:
+		m.resizingModel, cmd = m.resizingModel.Update(msg)
+		break
+	case Painting:
+		break
+	case Exporting:
+		break
+	}
+	return m, cmd
+	/*var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
@@ -209,11 +213,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	cmds = append(cmds, cmd)
 
-	return m, tea.Batch(cmds...)
+	return m, tea.Batch(cmds...)*/
 }
 
 func (m model) View() string {
-	if !m.ready {
+	switch m.currentState {
+	case Resizing:
+		return m.resizingModel.View()
+		//case Painting:
+		//	return m..View()
+		//case Exporting:
+		//	return m.resizingModel.View()
+	}
+	/*if !m.ready {
 		return "\n  Initializing..."
 	}
 
@@ -241,7 +253,7 @@ func (m model) View() string {
 
 		cursor := ""
 		if m.cursor == cell {
-			cursor = cursorStyle.Render(cellTypeChar[m.paintType])
+			cursor = cursorPrintStyle.Render(cellTypeChar[m.paintType])
 
 			if m.isPainting {
 				m.filled[cell] = m.paintType
@@ -250,7 +262,7 @@ func (m model) View() string {
 		}
 
 		if _, ok := m.additionalCursors[cell]; ok {
-			cursor = cursorStyle.Render(cellTypeChar[m.paintType])
+			cursor = cursorPrintStyle.Render(cellTypeChar[m.paintType])
 			checked = ""
 		}
 
@@ -267,7 +279,8 @@ func (m model) View() string {
 	}
 	m.viewport.SetContent(m.content)
 
-	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())
+	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())*/
+	return ""
 }
 
 func (m model) headerView() string {
